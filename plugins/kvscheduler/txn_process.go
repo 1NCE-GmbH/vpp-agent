@@ -17,6 +17,7 @@ package kvscheduler
 import (
 	"context"
 	"runtime/trace"
+	"strings"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -143,7 +144,8 @@ func (s *Scheduler) processTransaction(txn *transaction) {
 	}
 
 	// 4. Pre-recording
-	preTxnRecord := s.preRecordTransaction(txn, simulatedOps, skipSimulation)
+	transactionPrinter := &strings.Builder{}
+	preTxnRecord := s.preRecordTransaction(txn, simulatedOps, skipSimulation, transactionPrinter)
 
 	// 5. Execution:
 	var executedOps kvs.RecordedTxnOps
@@ -156,7 +158,7 @@ func (s *Scheduler) processTransaction(txn *transaction) {
 	stopTime := time.Now()
 
 	// 6. Recording:
-	s.recordTransaction(txn, preTxnRecord, executedOps, startTime, stopTime)
+	s.recordTransaction(txn, preTxnRecord, executedOps, startTime, stopTime, transactionPrinter)
 
 	// 7. Post-processing:
 	s.postProcessTransaction(txn, executedOps)
@@ -173,7 +175,7 @@ func (s *Scheduler) preProcessTransaction(txn *transaction) (skipExec, skipSimul
 
 	// allocate new transaction sequence number
 	txn.seqNum = s.txnSeqNumber
-	s.txnSeqNumber++
+	s.txnSeqNumber++ // TODO atomic
 
 	switch txn.txnType {
 	case kvs.SBNotification:

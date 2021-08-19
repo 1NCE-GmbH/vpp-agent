@@ -94,8 +94,7 @@ type Scheduler struct {
 	graph graph.Graph
 
 	// registry for descriptors
-	registryLock sync.Mutex
-	registry     registry.Registry
+	registry registry.Registry
 
 	// a list of key prefixed covered by registered descriptors
 	keyPrefixes []string
@@ -180,7 +179,7 @@ func (s *Scheduler) Init() error {
 	// initialize registry for key->descriptor lookups
 	s.registry = registry.NewRegistry()
 	// prepare channel for serializing transactions
-	s.txnQueue = make(chan *transaction, 100)
+	s.txnQueue = make(chan *transaction)
 	reportQueueCap(cap(s.txnQueue))
 	// register REST API handlers
 	s.registerHandlers(s.HTTPHandlers)
@@ -240,9 +239,6 @@ func (s *Scheduler) RegisterKVDescriptor(descriptors ...*kvs.KVDescriptor) error
 }
 
 func (s *Scheduler) registerKVDescriptor(descriptor *kvs.KVDescriptor) error {
-	s.registryLock.Lock()
-	defer s.registryLock.Unlock()
-
 	// TODO: validate descriptor
 	if s.registry.GetDescriptor(descriptor.Name) != nil {
 		return kvs.ErrDescriptorExists
@@ -375,8 +371,6 @@ func (s *Scheduler) DumpValuesByDescriptor(descriptor string, view kvs.View) (va
 	}
 
 	// obtain Retrieve handler from the descriptor
-	s.registryLock.Lock()
-	defer s.registryLock.Unlock()
 	kvDescriptor := s.registry.GetDescriptor(descriptor)
 	if kvDescriptor == nil {
 		err = errors.New("descriptor is not registered")
@@ -393,9 +387,6 @@ func (s *Scheduler) DumpValuesByDescriptor(descriptor string, view kvs.View) (va
 }
 
 func (s *Scheduler) getDescriptorForKeyPrefix(keyPrefix string) string {
-	s.registryLock.Lock()
-	defer s.registryLock.Unlock()
-
 	var descriptorName string
 	for _, descriptor := range s.registry.GetAllDescriptors() {
 		if descriptor.NBKeyPrefix == keyPrefix {

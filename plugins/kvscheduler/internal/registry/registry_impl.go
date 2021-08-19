@@ -16,6 +16,7 @@ package registry
 
 import (
 	"container/list"
+	"sync"
 
 	"fmt"
 
@@ -31,6 +32,7 @@ const (
 
 // registry is an implementation of Registry for descriptors.
 type registry struct {
+	lock             sync.RWMutex
 	descriptors      map[string]*KVDescriptor // descriptor name -> descriptor
 	descriptorList   []*KVDescriptor          // ordered by retrieve dependencies
 	upToDateDescList bool                     // true if descriptorList is in sync with descriptors
@@ -55,12 +57,17 @@ func NewRegistry() Registry {
 
 // RegisterDescriptor add new descriptor into the registry.
 func (reg *registry) RegisterDescriptor(descriptor *KVDescriptor) {
+	reg.lock.Lock()
+	defer reg.lock.Unlock()
 	reg.descriptors[descriptor.Name] = descriptor
-	reg.upToDateDescList = false
+	reg.upToDateDescList = false // TODO update descriptorList here
 }
 
 // GetAllDescriptors returns all registered descriptors.
 func (reg *registry) GetAllDescriptors() (descriptors []*KVDescriptor) {
+	reg.lock.Lock() // using write lock because of reg.descriptorList update
+	defer reg.lock.Unlock()
+
 	if reg.upToDateDescList {
 		return reg.descriptorList
 	}
@@ -86,6 +93,9 @@ func (reg *registry) GetAllDescriptors() (descriptors []*KVDescriptor) {
 
 // GetDescriptor returns descriptor with the given name.
 func (reg *registry) GetDescriptor(name string) *KVDescriptor {
+	reg.lock.RLock()
+	defer reg.lock.RUnlock()
+
 	descriptor, has := reg.descriptors[name]
 	if !has {
 		return nil
@@ -95,6 +105,9 @@ func (reg *registry) GetDescriptor(name string) *KVDescriptor {
 
 // GetDescriptorForKey returns descriptor handling the given key.
 func (reg *registry) GetDescriptorForKey(key string) *KVDescriptor {
+	reg.lock.Lock()
+	defer reg.lock.Unlock()
+
 	elem, cached := reg.keyToCacheEntry[key]
 	if cached {
 		// get descriptor from the cache

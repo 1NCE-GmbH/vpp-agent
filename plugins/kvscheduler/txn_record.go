@@ -103,8 +103,12 @@ func (s *Scheduler) preRecordTxnOp(args *applyValueArgs, node graph.Node) *kvs.R
 
 // preRecordTransaction logs transaction arguments + plan before execution to
 // persist some information in case there is a crash during execution.
-func (s *Scheduler) preRecordTransaction(txn *transaction, planned kvs.RecordedTxnOps,
-	skippedSimulation bool) *kvs.RecordedTxn {
+func (s *Scheduler) preRecordTransaction(
+	txn *transaction,
+	planned kvs.RecordedTxnOps,
+	skippedSimulation bool,
+	buf *strings.Builder,
+) *kvs.RecordedTxn {
 	defer trace.StartRegion(txn.ctx, "preRecordTransaction").End()
 	defer trackTransactionMethod("preRecordTransaction")()
 
@@ -150,19 +154,23 @@ func (s *Scheduler) preRecordTransaction(txn *transaction, planned kvs.RecordedT
 		}
 		msg := fmt.Sprintf("#%d - %s", record.SeqNum, txn.txnType.String())
 		n := 115 - len(msg)
-		var buf strings.Builder
 		buf.WriteString("+======================================================================================================================+\n")
 		buf.WriteString(fmt.Sprintf("| %s %"+strconv.Itoa(n)+"s |\n", msg, txnInfo))
 		buf.WriteString("+======================================================================================================================+\n")
 		buf.WriteString(record.StringWithOpts(false, false, 2))
-		fmt.Println(buf.String())
 	}
 
 	return record
 }
 
 // recordTransaction records the finalized transaction (log + in-memory).
-func (s *Scheduler) recordTransaction(txn *transaction, txnRecord *kvs.RecordedTxn, executed kvs.RecordedTxnOps, start, stop time.Time) {
+func (s *Scheduler) recordTransaction(
+	txn *transaction,
+	txnRecord *kvs.RecordedTxn,
+	executed kvs.RecordedTxnOps,
+	start, stop time.Time,
+	buf *strings.Builder,
+) {
 	defer trace.StartRegion(txn.ctx, "recordTransaction").End()
 	defer trackTransactionMethod("recordTransaction")()
 
@@ -177,7 +185,6 @@ func (s *Scheduler) recordTransaction(txn *transaction, txnRecord *kvs.RecordedT
 		elapsed := stop.Sub(start)
 		msg2 := fmt.Sprintf("took %v", elapsed.Round(time.Microsecond*100))
 
-		var buf strings.Builder
 		buf.WriteString("o----------------------------------------------------------------------------------------------------------------------o\n")
 		buf.WriteString(txnRecord.StringWithOpts(true, false, 2))
 		buf.WriteString("x----------------------------------------------------------------------------------------------------------------------x\n")

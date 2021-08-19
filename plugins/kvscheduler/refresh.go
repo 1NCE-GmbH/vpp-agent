@@ -46,9 +46,6 @@ type resyncData struct {
 func (s *Scheduler) refreshGraph(graphW graph.RWAccess,
 	keys utils.KeySet, resyncData *resyncData, verbose bool,
 ) {
-	s.registryLock.Lock()
-	defer s.registryLock.Unlock()
-
 	if s.logGraphWalk {
 		keysToRefresh := "<ALL>"
 		if keys != nil && keys.Length() > 0 {
