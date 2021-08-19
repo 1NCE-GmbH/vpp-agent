@@ -94,18 +94,19 @@ type Scheduler struct {
 	graph graph.Graph
 
 	// registry for descriptors
-	registry registry.Registry
+	registryLock sync.Mutex
+	registry     registry.Registry
 
 	// a list of key prefixed covered by registered descriptors
 	keyPrefixes []string
 
 	// TXN processing
-	txnLock      sync.Mutex // can be used to pause transaction processing; always lock before the graph!
 	txnQueue     chan *transaction
 	txnSeqNumber uint64
 	resyncCount  uint
 
 	// value status
+	valueLock        sync.Mutex
 	updatedStates    utils.KeySet // base values with updated status
 	valStateWatchers []valStateWatcher
 
@@ -239,6 +240,9 @@ func (s *Scheduler) RegisterKVDescriptor(descriptors ...*kvs.KVDescriptor) error
 }
 
 func (s *Scheduler) registerKVDescriptor(descriptor *kvs.KVDescriptor) error {
+	s.registryLock.Lock()
+	defer s.registryLock.Unlock()
+
 	// TODO: validate descriptor
 	if s.registry.GetDescriptor(descriptor.Name) != nil {
 		return kvs.ErrDescriptorExists
@@ -281,13 +285,6 @@ func (s *Scheduler) StartNBTransaction() kvs.Txn {
 	return txn
 }
 
-// TransactionBarrier ensures that all notifications received prior to the call
-// are associated with transactions that have already finalized.
-func (s *Scheduler) TransactionBarrier() {
-	s.txnLock.Lock()
-	s.txnLock.Unlock()
-}
-
 // PushSBNotification notifies about a spontaneous value change(s) in the SB
 // plane (i.e. not triggered by NB transaction).
 func (s *Scheduler) PushSBNotification(notif ...kvs.KVWithMetadata) error {
@@ -327,8 +324,8 @@ func (s *Scheduler) GetValueStatus(key string) *kvscheduler.BaseValueStatus {
 // WatchValueStatus allows to watch for changes in the status of non-derived
 // values with keys selected by the selector (all if keySelector==nil).
 func (s *Scheduler) WatchValueStatus(channel chan<- *kvscheduler.BaseValueStatus, keySelector kvs.KeySelector) {
-	s.txnLock.Lock()
-	defer s.txnLock.Unlock()
+	s.valueLock.Lock()
+	defer s.valueLock.Unlock()
 	s.valStateWatchers = append(s.valStateWatchers, valStateWatcher{
 		channel:  channel,
 		selector: keySelector,
@@ -340,12 +337,6 @@ func (s *Scheduler) WatchValueStatus(channel chan<- *kvscheduler.BaseValueStatus
 // SB (what is actually applied) or from the inside (what kvscheduler's
 // cached view of SB is).
 func (s *Scheduler) DumpValuesByDescriptor(descriptor string, view kvs.View) (values []kvs.KVWithMetadata, err error) {
-	if view == kvs.SBView {
-		// pause transaction processing
-		s.txnLock.Lock()
-		defer s.txnLock.Unlock()
-	}
-
 	graphR := s.graph.Read()
 	defer graphR.Release()
 
@@ -384,6 +375,8 @@ func (s *Scheduler) DumpValuesByDescriptor(descriptor string, view kvs.View) (va
 	}
 
 	// obtain Retrieve handler from the descriptor
+	s.registryLock.Lock()
+	defer s.registryLock.Unlock()
 	kvDescriptor := s.registry.GetDescriptor(descriptor)
 	if kvDescriptor == nil {
 		err = errors.New("descriptor is not registered")
@@ -400,14 +393,15 @@ func (s *Scheduler) DumpValuesByDescriptor(descriptor string, view kvs.View) (va
 }
 
 func (s *Scheduler) getDescriptorForKeyPrefix(keyPrefix string) string {
+	s.registryLock.Lock()
+	defer s.registryLock.Unlock()
+
 	var descriptorName string
-	s.txnLock.Lock()
 	for _, descriptor := range s.registry.GetAllDescriptors() {
 		if descriptor.NBKeyPrefix == keyPrefix {
 			descriptorName = descriptor.Name
 		}
 	}
-	s.txnLock.Unlock()
 	return descriptorName
 }
 
