@@ -6,6 +6,7 @@
 
 # ignore IDE files
 .idea/*
+.vscode
 
 # ignore executables (extensionless files)
 /cmd/**/*
