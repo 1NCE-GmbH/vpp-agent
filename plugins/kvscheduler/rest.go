@@ -418,8 +418,8 @@ func (s *Scheduler) dumpGetHandler(formatter *render.Render) http.HandlerFunc {
 
 		// without descriptor and key prefix return "index" page
 		if descriptor == "" && keyPrefix == "" {
-			s.txnLock.Lock()
-			defer s.txnLock.Unlock()
+			s.registryLock.Lock()
+			defer s.registryLock.Unlock()
 			index := dumpIndex{Views: []string{
 				kvs.SBView.String(), kvs.NBView.String(), kvs.CachedView.String()}}
 			for _, descriptor := range s.registry.GetAllDescriptors() {
@@ -516,8 +516,6 @@ func (s *Scheduler) statusGetHandler(formatter *render.Render) http.HandlerFunc 
 func (s *Scheduler) graphHandler(formatter *render.Render) http.HandlerFunc {
 	return func(w http.ResponseWriter, req *http.Request) {
 		args := req.URL.Query()
-		s.txnLock.Lock()
-		defer s.txnLock.Unlock()
 		graphRead := s.graph.Read()
 		defer graphRead.Release()
 

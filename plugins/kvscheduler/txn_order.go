@@ -25,6 +25,8 @@ import (
 //  3. create
 //  4. update
 func (s *Scheduler) orderValuesByOp(values []kvForTxn) []kvForTxn {
+	s.registryLock.Lock()
+	defer s.registryLock.Unlock()
 	graphR := s.graph.Read()
 	defer graphR.Release()
 

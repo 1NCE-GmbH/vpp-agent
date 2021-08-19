@@ -31,8 +31,8 @@ import (
 // remotely retrieved dynamic proto messages can't be converted to such proto messages (there are
 // no locally available statically generated proto models).
 func (s *Scheduler) ValidateSemantically(messages []proto.Message) error {
-	s.txnLock.Lock()
-	defer s.txnLock.Unlock()
+	s.registryLock.Lock()
+	defer s.registryLock.Unlock()
 
 	invalidMessageErrors := make([]*api.InvalidMessageError, 0)
 	for _, message := range messages {

@@ -159,10 +159,6 @@ func (c *InterfaceStateUpdater) watchVPPNotifications(ctx context.Context) {
 	for {
 		select {
 		case notif := <-c.ifEvents:
-			// if the notification is a result of a configuration change,
-			// make sure the associated transaction has already finalized
-			c.kvScheduler.TransactionBarrier()
-
 			c.processIfStateEvent(notif)
 
 		case ifMetaDto := <-c.ifMetaChan:

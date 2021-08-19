@@ -147,7 +147,6 @@ func (p *dispatcher) PushData(ctx context.Context, kvPairs []KeyVal) (results []
 	t := time.Now()
 
 	seqID, err := txn.Commit(ctx)
-	p.kvs.TransactionBarrier()
 	results = append(results, Result{
 		Key: "seqnum",
 		Status: &Status{

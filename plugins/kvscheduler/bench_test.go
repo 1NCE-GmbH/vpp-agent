@@ -200,7 +200,7 @@ func BenchmarkMultipleTransactions(b *testing.B) {
 
 	// create many interfaces for bridge domain
 	var wg sync.WaitGroup
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 10000; i++ {
 		wg.Add(1)
 		go func(i int) {
 			txn := c.scheduler.StartNBTransaction()
@@ -218,7 +218,7 @@ func BenchmarkMultipleTransactions(b *testing.B) {
 			testCtx := WithDescription(context.Background(), fmt.Sprintf("benchmarking multiple commits, processing #%v", i))
 			seq, err := txn.Commit(testCtx)
 			if err != nil {
-				b.Fatal(err)
+				b.Error(err)
 			}
 			seqNum = seq
 			wg.Done()

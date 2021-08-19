@@ -93,9 +93,11 @@ func (s *Scheduler) consumeTransactions() {
 		if canceled {
 			return
 		}
-		reportQueueWait(txn.txnType, time.Since(txn.created).Seconds())
-		s.processTransaction(txn)
-		reportTxnProcessed(txn.txnType, time.Since(txn.created).Seconds())
+		go func() {
+			reportQueueWait(txn.txnType, time.Since(txn.created).Seconds())
+			s.processTransaction(txn)
+			reportTxnProcessed(txn.txnType, time.Since(txn.created).Seconds())
+		}()
 	}
 }
 
@@ -115,8 +117,6 @@ func (s *Scheduler) consumeTransactions() {
 //     of blocking commit
 //  8. Update of transaction statistics
 func (s *Scheduler) processTransaction(txn *transaction) {
-	s.txnLock.Lock()
-	defer s.txnLock.Unlock()
 	defer trackTransactionMethod("processTransaction")()
 
 	startTime := time.Now()
@@ -409,6 +409,7 @@ func (s *Scheduler) postProcessTransaction(txn *transaction, executed kvs.Record
 	}
 
 	// send value status updates to the watchers
+	s.valueLock.Lock()
 	for _, watcher := range s.valStateWatchers {
 		for _, stateUpdate := range stateUpdates {
 			if watcher.selector == nil || watcher.selector(stateUpdate.Value.Key) {
@@ -421,6 +422,7 @@ func (s *Scheduler) postProcessTransaction(txn *transaction, executed kvs.Record
 			}
 		}
 	}
+	s.valueLock.Unlock()
 
 	// delete removed values from the graph after the notifications have been sent
 	if removed.Length() > 0 {
