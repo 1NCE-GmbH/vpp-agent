@@ -19,15 +19,16 @@ import (
 	"flag"
 	"fmt"
 	"strconv"
+	"sync"
 	"testing"
 
 	"go.ligato.io/cn-infra/v2/logging"
 	_ "go.ligato.io/cn-infra/v2/logging/logrus" // for setting default registry
 
 	mock_ifplugin "go.ligato.io/vpp-agent/v3/examples/kvscheduler/mock_plugins/ifplugin"
-	"go.ligato.io/vpp-agent/v3/examples/kvscheduler/mock_plugins/ifplugin/model"
+	mock_interfaces "go.ligato.io/vpp-agent/v3/examples/kvscheduler/mock_plugins/ifplugin/model"
 	mock_l2plugin "go.ligato.io/vpp-agent/v3/examples/kvscheduler/mock_plugins/l2plugin"
-	"go.ligato.io/vpp-agent/v3/examples/kvscheduler/mock_plugins/l2plugin/model"
+	mock_l2 "go.ligato.io/vpp-agent/v3/examples/kvscheduler/mock_plugins/l2plugin/model"
 	"go.ligato.io/vpp-agent/v3/pkg/models"
 	. "go.ligato.io/vpp-agent/v3/plugins/kvscheduler"
 	. "go.ligato.io/vpp-agent/v3/plugins/kvscheduler/api"
@@ -42,12 +43,12 @@ import (
 
 How to run:
   - build test binary	`go test -c`
-  - run all benchmarks:	`./kvscheduler.test -test.run=XXX -test.bench=.`
-  - with CPU profile:	`./kvscheduler.test -test.run=XXX -test.bench=. -test.cpuprofile=cpu.out`
+  - run all benchmarks:	`./kvscheduler.test -test.run=\^\$ -test.bench=\^\(BenchmarkXXX\)\$`
+  - with CPU profile:	`./kvscheduler.test -test.run=\^\$ -test.bench=\^\(BenchmarkXXX\)\$ -test.cpuprofile=cpu.out`
     - analyze profile: `go tool pprof cpu.out`
-  - with mem profile:	`./kvscheduler.test -test.run=XXX -test.bench=. -memprofile mem.out`
+  - with mem profile:	`./kvscheduler.test -test.run=\^\$ -test.bench=\^\(BenchmarkXXX\)\$ -test.memprofile mem.out`
     - analyze profile: `go tool pprof -alloc_space mem.out`
-  - with trace profile:	`./kvscheduler.test -test.run=XXX -test.bench=. -trace trace.out`
+  - with trace profile:	`./kvscheduler.test -test.run=\^\$ -test.bench=\^\(BenchmarkXXX\)\$ -test.trace trace.out`
     - analyze profile: `go tool trace -http=:6060 trace.out`
 
 */
@@ -185,4 +186,43 @@ func TestScale(t *testing.T) {
 	if err := runScale(*scaleFlag, true); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Benchmark scheduler for several thousand parallel transactions.
+func BenchmarkMultipleTransactions(b *testing.B) {
+	c := setupScale()
+	defer teardownScale(c)
+
+	// create single bridge domain
+	valBd := &mock_l2.BridgeDomain{
+		Name: fmt.Sprintf("bd-%d", 1),
+	}
+
+	// create many interfaces for bridge domain
+	var wg sync.WaitGroup
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go func(i int) {
+			txn := c.scheduler.StartNBTransaction()
+
+			valIface := &mock_interfaces.Interface{
+				Name: fmt.Sprintf("iface-%d", i),
+				Type: mock_interfaces.Interface_LOOPBACK,
+			}
+			valBd.Interfaces = []*mock_l2.BridgeDomain_Interface{{
+				Name: valIface.Name,
+			}}
+			txn.SetValue(models.Key(valIface), valIface)
+			txn.SetValue(models.Key(valBd), valBd)
+
+			testCtx := WithDescription(context.Background(), fmt.Sprintf("benchmarking multiple commits, processing #%v", i))
+			seq, err := txn.Commit(testCtx)
+			if err != nil {
+				b.Fatal(err)
+			}
+			seqNum = seq
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
 }
